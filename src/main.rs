@@ -15,7 +15,7 @@ const NUM_CLIENTS: usize = 20;
 const NUM_TAGS: usize = 10;
 
 /// Number of distinct measurements written
-const NUM_MEASUREMENTS: usize = 10;
+const NUM_MEASUREMENTS: usize = 1;
 
 /// Number lines of line protocol in each request
 const LINES_PER_REQUEST: usize = 100000;
