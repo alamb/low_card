@@ -9,10 +9,10 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use reqwest::Response;
 
 /// number of concurrent clients sending data
-const NUM_CLIENTS: usize = 2;
+const NUM_CLIENTS: usize = 5;
 
 /// Number of lines of line protocol in each request
-const LINES_PER_REQUEST: usize = 10;
+const LINES_PER_REQUEST: usize = 1000;
 
 #[tokio::main]
 async fn main() {
@@ -43,7 +43,7 @@ async fn main() {
 async fn write_task(generator: Arc<LineProtoGenerator>) {
     let client = WriteClient::new();
 
-    for _ in 0..10 {
+    for _ in 0..100 {
         let res = client.post(generator.make_lines(LINES_PER_REQUEST)).await;
 
         if res.status().is_success() {
