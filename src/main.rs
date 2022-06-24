@@ -1,30 +1,58 @@
 // (arrow_dev) alamb@MacBook-Pro-6:~/Software/influxdb_iox$ LOG_FILTER=ingester=debug,info cargo run    -- run all-in-one --max-http-request-size=1000000000 --persist-partition-size-threshold-bytes=200000000
 
 
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{atomic::{AtomicI64, Ordering}, Arc};
 
 use futures::{stream::FuturesUnordered, StreamExt};
 use reqwest::Response;
 
+
+/// number of concurrent clients sending data
+const NUM_CLIENTS: usize = 2;
+
+/// Number of lines of line protocol in each request
+const LINES_PER_REQUEST: usize = 10;
 
 
 #[tokio::main]
 async fn main() {
     println!("Hello, starting....");
 
+    let generator = Arc::new(LineProtoGenerator::new());
 
-    let generator = LineProtoGenerator::new();
-    let client = WriteClient::new();
+    // fire it up
+    println!("starting clients...");
 
-    let futures = (0..10).map(|_| {
-        client.post(generator.make_lines(10))
+    let tasks = (0..NUM_CLIENTS).map(|_| {
+        tokio::task::spawn(write_task(Arc::clone(&generator)))
     })
-        .collect::<FuturesUnordered<_>>()
+        .collect::<FuturesUnordered<_>>();
+
+
+    println!("waiting for clients...");
+    let results = tasks
         .collect::<Vec<_>>()
         .await;
 
+    for res in results {
+        if let Err(e) = res {
+            println!("Error, client task panic'd: {}", e)
+        }
+    }
 
-    for res in futures {
+
+    println!("done");
+}
+
+
+// endless loop that sends data from the generator to the ingester
+async fn write_task(generator: Arc<LineProtoGenerator>) {
+    let client = WriteClient::new();
+
+    for _ in 0..10 {
+        let res = client.post(generator.make_lines(LINES_PER_REQUEST))
+            .await;
+
         if res.status().is_success() {
             println!("Success!");
         }
@@ -33,10 +61,9 @@ async fn main() {
             println!("{:#?}", res);
         }
     }
-
-
-    println!("done");
 }
+
+
 
 /// wrapper that send data to IOx
 #[derive(Debug)]
@@ -101,7 +128,7 @@ impl LineProtoGenerator {
     /// write a single line of output to w
     fn gen_line<W: std::io::Write>(&self, w: &mut W, i: usize) {
         let ts = self.timestamp_generator.fetch_add(1, Ordering::Relaxed);
-        write!(w, "m,tag=A field=4 {}", ts).expect("write failed");
+        write!(w, "m,tag=A field=4 {}\n", ts).expect("write failed");
 
     }
 }
@@ -110,3 +137,7 @@ impl LineProtoGenerator {
 
 
 // basic plan is to feed in data with high volumne with low cardinality tags (that thus compresses very well)
+
+
+// need to:
+// setup request generator tasks
