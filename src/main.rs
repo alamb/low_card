@@ -11,6 +11,12 @@ use reqwest::Response;
 /// number of concurrent clients sending data
 const NUM_CLIENTS: usize = 20;
 
+/// Number of low cardinality tags written
+const NUM_TAGS: usize = 10;
+
+/// Number of distinct measurements written
+const NUM_MEASUREMENTS: usize = 10;
+
 /// Number lines of line protocol in each request
 const LINES_PER_REQUEST: usize = 100000;
 
@@ -18,13 +24,18 @@ const LINES_PER_REQUEST: usize = 100000;
 async fn main() {
     println!("Hello, starting....");
 
+    // use one generator, results in no duplicates
     let generator = Arc::new(LineProtoGenerator::new());
 
     // fire it up
     println!("starting clients...");
 
     let tasks = (0..NUM_CLIENTS)
-        .map(|_| tokio::task::spawn(write_task(Arc::clone(&generator))))
+        .map(|_| {
+            // sending dupliated data results means the ingester can keep up
+            //let generator = Arc::new(LineProtoGenerator::new());
+            tokio::task::spawn(write_task(Arc::clone(&generator)))
+        })
         .collect::<FuturesUnordered<_>>();
 
     println!("waiting for clients...");
@@ -99,21 +110,27 @@ impl LineProtoGenerator {
     fn make_lines(&self, num_lines: usize) -> Vec<u8> {
         let mut bytes = vec![];
 
-        for _i in 0..num_lines {
-            self.gen_line(&mut bytes)
+        for i in 0..num_lines {
+            self.gen_line(&mut bytes, i)
         }
 
         bytes
     }
 
     /// write a single line of output to w
-    fn gen_line<W: std::io::Write>(&self, w: &mut W) {
+    ///
+    /// example output:
+    /// ```text
+    /// m tag0=A_FAIRLY_LONG_TAG_VALUE,tag1=A_FAIRLY_LONG_TAG_VALUE field=4 122
+    ///```
+    fn gen_line<W: std::io::Write>(&self, w: &mut W, i: usize) {
+        let measurement_number = i % NUM_MEASUREMENTS;
+
         let ts = self.timestamp_generator.fetch_add(1, Ordering::Relaxed);
-        write!(w, "m,tag=A_FAIRLY_LONG_TAG_VALUE field=4 {}\n", ts).expect("write failed");
+        write!(w, "m{}", measurement_number).unwrap();
+        for tag_num in 0..NUM_TAGS  {
+            write!(w, ",tag{}=A_FAIRLY_LONG_TAG_VALUE", tag_num).unwrap();
+        }
+        write!(w, " field=4 {}\n", ts).unwrap();
     }
 }
-
-// basic plan is to feed in data with high volumne with low cardinality tags (that thus compresses very well)
-
-// need to:
-// setup request generator tasks
