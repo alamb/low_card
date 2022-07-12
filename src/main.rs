@@ -11,14 +11,17 @@ use reqwest::Response;
 /// number of concurrent clients sending data
 const NUM_CLIENTS: usize = 20;
 
+/// Number of requests made per client
+const NUM_REQUESTS: usize = 100;
+
 /// Number of low cardinality tags written
 const NUM_TAGS: usize = 10;
 
 /// Number of distinct measurements written
-const NUM_MEASUREMENTS: usize = 1;
+const NUM_MEASUREMENTS: usize = 10;
 
 /// Number lines of line protocol in each request
-const LINES_PER_REQUEST: usize = 100000;
+const LINES_PER_REQUEST: usize = 10000;
 
 #[tokio::main]
 async fn main() {
@@ -54,7 +57,7 @@ async fn main() {
 async fn write_task(generator: Arc<LineProtoGenerator>) {
     let client = WriteClient::new();
 
-    for _ in 0..1000 {
+    for _ in 0..NUM_REQUESTS {
         let res = client.post(generator.make_lines(LINES_PER_REQUEST)).await;
 
         if res.status().is_success() {
